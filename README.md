@@ -17,7 +17,7 @@ bundle install
 
 ## Running commands
 
-### Search clients
+### Searching clients
 
 Search clients by name:
 
@@ -37,7 +37,7 @@ Search clients in a JSON file:
 bin/search_client query --field=name|email --value=smith@clients.com --file=path_to_file.json
 ```
 
-### Find duplicate clients:
+### Finding duplicate clients:
 
 By field:
 
