@@ -1,0 +1,134 @@
+#!/usr/bin/env ruby
+
+require 'json'
+require 'optparse'
+require 'colorize'
+
+class SearchClient
+  DATA_FILE_PATH = File.join(%w(data))
+  DATA_FILE_NAME = 'clients.json'.freeze
+
+  def initialize(options)
+    @field = options[:field] == 'name' ? 'full_name' : options[:field]
+    @query = options[:value]
+    @json_file = options[:file] || File.join(DATA_FILE_PATH, DATA_FILE_NAME)
+  end
+
+  def query
+    unless json_data[0].empty?
+      matched_clients = json_data[0].select do |client|
+        client[@field] && client[@field].match?(Regexp.new(@query, 'i'))
+      end
+      [matched_clients, nil]
+    else
+      json_data
+    end
+  end
+
+  def find_duplicates
+    unless json_data[0].empty?
+      duplicate_clients = json_data[0].group_by { |c| c[@field] }
+                                      .select { |v, g | !v.nil? && g.size > 1 }
+      [duplicate_clients, nil]
+    else
+      json_data
+    end
+  end
+
+  private
+
+    def json_data
+      return @json_data unless @json_data.nil?
+
+      begin
+        unless File.exist?(@json_file)
+          @json_data = [[], 'JSON file cannot be found!']
+        else
+          @json_data = [JSON.parse(File.read(@json_file)), nil]
+        end
+      rescue JSON::ParserError
+        @json_data = [[], 'JSON file cannot be parsed!']
+      end
+  end
+end
+
+def run_command(args)
+  command = args.shift
+
+  options = {}
+  op = OptionParser.new do |opts|
+    opts.banner = 'Usage: bin/search_client query|find_duplicates [options]'
+
+    opts.on('-f', '--field FIELD', 'Index key or field name to search') { |v| options[:field] = v }
+    opts.on('-v', '--value VALUE', 'Value to search for') { |v| options[:value] = v }
+    opts.on('-p', '--file FILE', 'Optional path to file. Defaults to clients.json the data directory') { |v| options[:file] = v }
+  end
+  
+  begin
+    op.parse!(args)
+  rescue OptionParser::InvalidOption, OptionParser::MissingArgument => e
+    puts e
+    puts op
+    exit 1
+  end  
+
+  case command
+  when 'query'
+    if options[:field] && options[:value]
+      begin
+        results, error = SearchClient.new(options).query
+        if error.nil?
+          unless results.empty?
+            puts 'Matches:'.colorize(:green)
+            results.each do |client|
+              puts "  - Name: #{client['full_name']}, Email: #{client['email']}"
+            end
+          else
+            puts 'Your query yielded no results.'.colorize(:blue)
+          end
+        else
+          puts error.colorize(:red)
+        end
+      rescue => e
+        puts "Something went wrong!".colorize(:red)
+        puts "#{e.to_s}"
+        exit 1
+      end
+    else
+      puts "Usage: bin/search_client query --field=FIELD --value=VALUE --file=FILE"
+    end
+  when 'find_duplicates'
+    if options[:field]
+      begin
+        results, error = SearchClient.new(options).find_duplicates
+        if error.nil?
+          unless results.empty?
+            puts 'Duplicates:'.colorize(:green)
+            results.each do |k, clients|
+              puts "  #{k}:"
+              clients.each do |client|
+                puts "  -- Name: #{client['full_name']}, Email: #{client['email']}"
+              end
+            end
+          else
+            puts 'Your query yielded no results.'.colorize(:blue)
+          end
+        else
+          puts error.colorize(:red)
+        end
+      rescue => e
+        puts "Something went wrong!".colorize(:red)
+        puts "#{e.to_s}"
+        exit 1
+      end
+    else
+      puts "Usage: bin/search_client find_duplicates --field=FIELD --file=FILE"
+    end
+  else
+    puts "Usage: bin/search_client query|find_duplicates --field=FIELD --value=VALUE --file=FILE"
+  end
+end
+
+if __FILE__ == $PROGRAM_NAME
+  run_command(ARGV)
+end
